@@ -1,2 +1,24 @@
-selenium>=3.12.0
-WeasyPrint>=0.42.3
+beautifulsoup4==4.11.1; python_full_version >= "3.6.0"
+brotli==1.0.9; platform_python_implementation == "CPython" and python_version >= "3.7"
+brotlicffi==1.0.9.2; platform_python_implementation != "CPython" and python_version >= "3.7"
+certifi==2022.6.15; python_version >= "3.7" and python_version < "4"
+cffi==1.15.1; platform_python_implementation != "CPython" and python_version >= "3.7"
+charset-normalizer==2.1.1; python_version >= "3.7" and python_version < "4" and python_full_version >= "3.6.0"
+cssselect2==0.6.0; python_version >= "3.7"
+fonttools==4.37.1; python_version >= "3.7"
+html5lib==1.1; python_version >= "3.7" and python_full_version < "3.0.0" or python_full_version >= "3.5.0" and python_version >= "3.7"
+idna==3.3; python_version >= "3.7" and python_version < "4" \
+    --hash=sha256:84d9dd047ffa80596e0f246e2eab0b391788b0503584e8945f2368256d2735ff \
+    --hash=sha256:9d643ff0a55b762d5cdb124b8eaa99c66322e2157b69160bc32796e824360e6d
+pillow==9.2.0; python_version >= "3.7"
+pycparser==2.21; python_version >= "3.7" and python_full_version < "3.0.0" or python_full_version >= "3.4.0" and python_version >= "3.7"
+pydyf==0.2.0; python_version >= "3.7"
+pyphen==0.12.0; python_version >= "3.7"
+requests==2.28.1; python_version >= "3.7" and python_version < "4"
+six==1.16.0; python_version >= "3.7" and python_full_version < "3.0.0" or python_full_version >= "3.5.0" and python_version >= "3.7"
+soupsieve==2.3.2.post1; python_version >= "3.6" and python_full_version >= "3.6.0"
+tinycss2==1.1.1; python_version >= "3.7"
+urllib3==1.26.12; python_version >= "3.7" and python_full_version < "3.0.0" and python_version < "4" or python_full_version >= "3.6.0" and python_version < "4" and python_version >= "3.7"
+weasyprint==56.1; python_version >= "3.7"
+webencodings==0.5.1; python_version >= "3.7" and python_full_version < "3.0.0" or python_full_version >= "3.5.0" and python_version >= "3.7"
+zopfli==0.2.1; python_version >= "3.7"

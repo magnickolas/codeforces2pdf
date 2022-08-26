@@ -1,63 +1,148 @@
+import argparse
+import logging
+import os
+import re
+import requests
+import subprocess
 import sys
+import tempfile
+from typing import Tuple
 
-from selenium import webdriver
+import bs4
 from weasyprint import HTML, CSS
 
-def exit(message):
-  print(message)
-  sys.exit(1)
 
-def extract_contest(driver, contest_id):
-  # construct contest url
-  contest_url = 'https://codeforces.com/contest/{0}/problems'.format(contest_id)
+class Formatter(logging.Formatter):
+    def format(self, record):
+        if record.levelno == logging.INFO:
+            self._style._fmt = "[\033[0;32m%(message)s\033[0m]"
+        elif record.levelno == logging.ERROR:
+            self._style._fmt = "\033[0;31mERROR: %(message)s\033[0m"
+        elif record.levelno == logging.WARNING:
+            self._style._fmt = "\033[0;34mWARNING: %(message)s\033[0m"
+        else:
+            self._style._fmt = "%(message)s"
+        return super().format(record)
 
-  # get the target page
-  driver.get(contest_url)
 
-  # extract contest
-  try:
-    return contest_id + '.pdf', driver.execute_script('return document.getElementsByClassName("problem-frames")[0].innerHTML;');
-  except:
-    exit('Invalid arguments values')
+logger = logging.getLogger(__name__)
+handler = logging.StreamHandler()
+handler.setFormatter(Formatter())
+logger.setLevel(logging.INFO)
+logger.addHandler(handler)
 
-def extract_problem(driver, contest_id, problem_character):
-  # construct problem url
-  problem_url = 'https://codeforces.com/contest/{0}/problem/{1}'.format(contest_id, problem_character)
-  
-  # get the target page
-  driver.get(problem_url)
 
-  # extract problem statement
-  try:
-    return contest_id + problem_character + '.pdf', driver.execute_script('return document.getElementsByClassName("problemindexholder")[0].innerHTML;');
-  except:
-    exit('Invalid arguments values')
+def error(message):
+    logger.error(message)
+    sys.exit(1)
+
+
+def exception(message):
+    logger.exception(message)
+    sys.exit(1)
+
+
+def warning(message):
+    logger.warning(message)
+
+
+def info(message):
+    logger.info(message)
+
+
+def debug(message):
+    logger.debug(message)
+
+
+def extract_problem(contest_id, problem) -> Tuple[str, str]:
+    problem_url = f'https://codeforces.com/contest/{contest_id}/problem/{problem}'
+    try:
+        resp = requests.get(problem_url)
+    except requests.exceptions.ConnectionError:
+        exception('failed to fetch problem webpage: {problem_url=}')
+    if not resp.ok:
+        error(f"codeforces returned error code: {problem_url=} {resp.status_code=}")
+    bs = bs4.BeautifulSoup(resp.content, "html.parser")
+    problem_block = bs.select_one(".problemindexholder")
+    if problem_block is None:
+        error('couldn\'t find the problem block on a webpage')
+    html = problem_block.encode_contents().decode()
+
+    return f"{contest_id}{problem}.pdf", html
+
+
+def render_formulas(html: str) -> Tuple[bool, str]:
+    formula_pattern = re.compile(r"\$\$(\$[^\$]*\$)\$\$")
+    latex_template = (
+        r"\documentclass{{article}}"
+        r"\usepackage[utf8]{{inputenc}}"
+        r"\begin{{document}}"
+        "{content}"
+        r"\end{{document}}"
+    )
+    formulas = re.findall(formula_pattern, html)
+    latex_src = latex_template.format(content='\n\n'.join(formulas))
+    with tempfile.NamedTemporaryFile('w', suffix='.tex') as f:
+        f.write(latex_src)
+        f.flush()
+        rendered = True
+        try:
+            p = subprocess.Popen(
+                ['make4ht', '-u', f.name],
+                cwd=os.path.split(f.name)[0],
+                stdout=subprocess.DEVNULL,
+            )
+            if p.wait() != 0:
+                rendered = False
+        except Exception:
+            rendered = False
+        finally:
+            if not rendered:
+                warning('converting from latex to html with make4ht failed')
+                return False, html
+
+    output_filename = f'{f.name.removesuffix(".tex")}.html'
+    bs = bs4.BeautifulSoup(open(output_filename, 'r'), 'html.parser')
+    html_formulas_embeds = [par.encode_contents().decode().strip() for par in bs.find_all('p')]
+    if len(formulas) != len(html_formulas_embeds):
+        warning('failed to render latex formulas')
+        return False, html
+    formula_embed_map = dict(zip(formulas, html_formulas_embeds))
+    return True, re.sub(formula_pattern, lambda x: formula_embed_map[x.group(1)], html)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('contest_id', type=int)
+    parser.add_argument('problem', type=str)
+    return parser.parse_args()
+
+
+def build_pdf_from_html(html: str, file_name: str):
+    HTML(string=html, base_url='https://codeforces.com/').write_pdf(
+        file_name, stylesheets=[CSS('problem-statement.css')]
+    )
+
 
 def main():
-  len_argv = len(sys.argv)
+    args = parse_args()
 
-  # check the number of command-line arguments
-  if len_argv < 2 or len_argv > 3:
-    sys.exit('usage: codeforces2pdf.py <contest_id> [problem_character]')
+    contest_id = args.contest_id
+    problem = args.problem
 
-  # set driver options
-  options = webdriver.ChromeOptions()
-  options.add_argument('headless')
+    debug(f'fetching problem webpage: {contest_id=} {problem=}')
+    out_filename, html = extract_problem(contest_id, problem)
+    info('fetched')
 
-  # initialize driver
-  driver = webdriver.Chrome(chrome_options = options)
+    debug('rendering latex')
+    rendered, html = render_formulas(html)
+    if rendered:
+        info('rendered latex')
 
-  # choose to extract contest or problem
-  if len_argv == 2:
-    file_name, html = extract_contest(driver, sys.argv[1])
-  elif len_argv == 3:
-    file_name, html = extract_problem(driver, sys.argv[1], sys.argv[2])
+    debug('building pdf')
+    build_pdf_from_html(html, out_filename)
+    info(f'done')
 
-  # close the driver
-  driver.quit()
 
-  # build the PDF file
-  HTML(string = html, base_url = 'https://codeforces.com/').write_pdf(file_name, stylesheets = [CSS('css.css')])
-
-if __name__ == "__main__":
-  main()
+if __name__ == '__main__':
+    main()
