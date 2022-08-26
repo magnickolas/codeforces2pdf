@@ -131,10 +131,10 @@ def build_pdf_from_html(html: str, file_name: str):
     HTML(string=html, base_url="https://codeforces.com/").write_pdf(
         file_name,
         stylesheets=[
-            CSS("ttypography.css"),
-            CSS("problem-statement.css"),
-            CSS("clear.css"),
-            CSS("style.css"),
+            CSS("styles/ttypography.css"),
+            CSS("styles/problem-statement.css"),
+            CSS("styles/clear.css"),
+            CSS("styles/style.css"),
         ],
     )
 
