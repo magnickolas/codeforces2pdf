@@ -1,4 +1,5 @@
 import argparse
+from html import unescape
 import logging
 import os
 import re
@@ -68,7 +69,7 @@ def extract_problem(contest_id, problem) -> Tuple[str, str]:
         exception("failed to fetch problem webpage: {problem_url=}")
     if not resp.ok:
         error(f"codeforces returned error code: {problem_url=} {resp.status_code=}")
-    bs = bs4.BeautifulSoup(resp.content, 'html.parser')
+    bs = bs4.BeautifulSoup(resp.content, "html.parser")
     problem_block = bs.select_one(".problemindexholder")
     if problem_block is None:
         error("couldn't find the problem block on a webpage")
@@ -88,7 +89,7 @@ def render_formulas(html: str) -> Tuple[bool, str]:
         r"\end{{document}}"
     )
     formulas = re.findall(formula_pattern, html)
-    latex_src = latex_template.format(content="\n\n".join(formulas))
+    latex_src = latex_template.format(content="\n\n".join(map(unescape, formulas)))
     with tempfile.NamedTemporaryFile("w", suffix=".tex") as f:
         f.write(latex_src)
         f.flush()
@@ -97,7 +98,6 @@ def render_formulas(html: str) -> Tuple[bool, str]:
             p = subprocess.Popen(
                 ["make4ht", "-u", f.name],
                 cwd=os.path.split(f.name)[0],
-                stdout=subprocess.DEVNULL,
             )
             if p.wait() != 0:
                 rendered = False
