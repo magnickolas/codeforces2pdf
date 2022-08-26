@@ -54,18 +54,25 @@ def debug(message):
     logger.debug(message)
 
 
+def remove_spans(block: bs4.Tag):
+    spans = list(block.find_all("span"))
+    for span in spans:
+        span.replace_with(span.encode_contents().decode())
+
+
 def extract_problem(contest_id, problem) -> Tuple[str, str]:
-    problem_url = f'https://codeforces.com/contest/{contest_id}/problem/{problem}'
+    problem_url = f"https://codeforces.com/contest/{contest_id}/problem/{problem}"
     try:
         resp = requests.get(problem_url)
     except requests.exceptions.ConnectionError:
-        exception('failed to fetch problem webpage: {problem_url=}')
+        exception("failed to fetch problem webpage: {problem_url=}")
     if not resp.ok:
         error(f"codeforces returned error code: {problem_url=} {resp.status_code=}")
-    bs = bs4.BeautifulSoup(resp.content, "html.parser")
+    bs = bs4.BeautifulSoup(resp.content, 'html.parser')
     problem_block = bs.select_one(".problemindexholder")
     if problem_block is None:
-        error('couldn\'t find the problem block on a webpage')
+        error("couldn't find the problem block on a webpage")
+    remove_spans(problem_block)
     html = problem_block.encode_contents().decode()
 
     return f"{contest_id}{problem}.pdf", html
@@ -81,14 +88,14 @@ def render_formulas(html: str) -> Tuple[bool, str]:
         r"\end{{document}}"
     )
     formulas = re.findall(formula_pattern, html)
-    latex_src = latex_template.format(content='\n\n'.join(formulas))
-    with tempfile.NamedTemporaryFile('w', suffix='.tex') as f:
+    latex_src = latex_template.format(content="\n\n".join(formulas))
+    with tempfile.NamedTemporaryFile("w", suffix=".tex") as f:
         f.write(latex_src)
         f.flush()
         rendered = True
         try:
             p = subprocess.Popen(
-                ['make4ht', '-u', f.name],
+                ["make4ht", "-u", f.name],
                 cwd=os.path.split(f.name)[0],
                 stdout=subprocess.DEVNULL,
             )
@@ -98,14 +105,16 @@ def render_formulas(html: str) -> Tuple[bool, str]:
             rendered = False
         finally:
             if not rendered:
-                warning('converting from latex to html with make4ht failed')
+                warning("converting from latex to html with make4ht failed")
                 return False, html
 
     output_filename = f'{f.name.removesuffix(".tex")}.html'
-    bs = bs4.BeautifulSoup(open(output_filename, 'r'), 'html.parser')
-    html_formulas_embeds = [par.encode_contents().decode().strip() for par in bs.find_all('p')]
+    bs = bs4.BeautifulSoup(open(output_filename, "r"), "html.parser")
+    html_formulas_embeds = [
+        par.encode_contents().decode().strip() for par in bs.find_all("p")
+    ]
     if len(formulas) != len(html_formulas_embeds):
-        warning('failed to render latex formulas')
+        warning("failed to render latex formulas")
         return False, html
     formula_embed_map = dict(zip(formulas, html_formulas_embeds))
     return True, re.sub(formula_pattern, lambda x: formula_embed_map[x.group(1)], html)
@@ -113,14 +122,20 @@ def render_formulas(html: str) -> Tuple[bool, str]:
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('contest_id', type=int)
-    parser.add_argument('problem', type=str)
+    parser.add_argument("contest_id", type=int)
+    parser.add_argument("problem", type=str)
     return parser.parse_args()
 
 
 def build_pdf_from_html(html: str, file_name: str):
-    HTML(string=html, base_url='https://codeforces.com/').write_pdf(
-        file_name, stylesheets=[CSS('problem-statement.css')]
+    HTML(string=html, base_url="https://codeforces.com/").write_pdf(
+        file_name,
+        stylesheets=[
+            CSS("ttypography.css"),
+            CSS("problem-statement.css"),
+            CSS("clear.css"),
+            CSS("style.css"),
+        ],
     )
 
 
@@ -130,19 +145,19 @@ def main():
     contest_id = args.contest_id
     problem = args.problem
 
-    debug(f'fetching problem webpage: {contest_id=} {problem=}')
+    debug(f"fetching problem webpage: {contest_id=} {problem=}")
     out_filename, html = extract_problem(contest_id, problem)
-    info('fetched')
+    info("fetched")
 
-    debug('rendering latex')
+    debug("rendering latex")
     rendered, html = render_formulas(html)
     if rendered:
-        info('rendered latex')
+        info("rendered latex")
 
-    debug('building pdf')
+    debug("building pdf")
     build_pdf_from_html(html, out_filename)
-    info(f'done')
+    info(f"done")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
