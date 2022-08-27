@@ -62,8 +62,8 @@ def debug(message):
 
 
 class Mode(Enum):
-    DEFAULT  = 1
-    FAST     = 2
+    DEFAULT = 1
+    FAST = 2
     GRAPHICS = 3
 
 
@@ -97,9 +97,14 @@ def extract_problem(contest_id, problem) -> Tuple[str, str]:
     return f"{contest_id}{problem}.pdf", html
 
 
-def generate_latex_formulas_embeds_graphics(formulas: list[LatexFormula]) -> Optional[list[str]]:
+def generate_latex_formulas_embeds_graphics(
+    formulas: list[LatexFormula],
+) -> Optional[list[str]]:
     Path(CACHE_PATH).mkdir(parents=True, exist_ok=True)
-    svgs_files = [tempfile.NamedTemporaryFile("wb+", dir=CACHE_PATH, suffix=".svg") for _ in formulas]
+    svgs_files = [
+        tempfile.NamedTemporaryFile("wb+", dir=CACHE_PATH, suffix=".svg")
+        for _ in formulas
+    ]
     global TEMP_FILES
     TEMP_FILES += svgs_files
     embeds = []
@@ -108,10 +113,12 @@ def generate_latex_formulas_embeds_graphics(formulas: list[LatexFormula]) -> Opt
         ps = []
         for formula, svg_file in zip(formulas, svgs_files):
             extra_args = ["--inline"] * formula.is_inline
-            ps.append(subprocess.Popen(
-                ["tex2svg", *extra_args, f"{unescape(formula.content)}"],
-                stdout=svg_file,
-            ))
+            ps.append(
+                subprocess.Popen(
+                    ["tex2svg", *extra_args, f"{unescape(formula.content)}"],
+                    stdout=svg_file,
+                )
+            )
             embeds.append(f'<img src="{svg_file.name}" align="middle" />')
         for p in ps:
             if p.wait() != 0:
@@ -160,7 +167,9 @@ def generate_latex_formulas_embeds(
     return embeds
 
 
-def generate_latex_formulas_embeds_fast(formulas: list[LatexFormula]) -> Optional[list[str]]:
+def generate_latex_formulas_embeds_fast(
+    formulas: list[LatexFormula],
+) -> Optional[list[str]]:
     latex_template = (
         r"\documentclass{{minimal}}"
         r"\usepackage[utf8]{{inputenc}}"
