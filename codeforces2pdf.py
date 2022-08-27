@@ -257,10 +257,10 @@ def parse_args():
     return parser.parse_args()
 
 
-def build_pdf_from_html(html: str, output_dir: str, file_name: str, fast: Mode):
+def build_pdf_from_html(html: str, output_dir: str, file_name: str, mode: Mode):
     p = Path(output_dir)
     p.mkdir(parents=True, exist_ok=True)
-    extra_css = [CSS("styles/tex2html.css")] * (fast == Mode.DEFAULT)
+    extra_css = [CSS("styles/tex2html.css")] * (mode == Mode.DEFAULT)
     HTML(string=html, base_url="").write_pdf(
         p / file_name,
         stylesheets=[
