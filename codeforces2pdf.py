@@ -117,7 +117,7 @@ def generate_latex_formulas_embeds_graphics(
             extra_args = ["--inline"] * formula.is_inline
             ps.append(
                 subprocess.Popen(
-                    ["tex2svg", *extra_args, f"{unescape(formula.content)}"],
+                    ["tex2svg", *extra_args, f" {unescape(formula.content)}"],
                     stdout=svg_file,
                 )
             )
@@ -143,7 +143,7 @@ def generate_latex_formulas_embeds(
     rendered = True
     html = None
     try:
-        arg = r" \\ ".join(unescape(f.content) for f in formulas) + r" \\"
+        arg = " " + r" \\ ".join(unescape(f.content) for f in formulas) + r" \\"
         p = subprocess.Popen(
             ["tex2htmlcss", "--inline", arg],
             stdout=subprocess.PIPE,
