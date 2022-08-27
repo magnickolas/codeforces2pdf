@@ -100,6 +100,8 @@ def extract_problem(contest_id, problem) -> Tuple[str, str]:
 def generate_latex_formulas_embeds_graphics(
     formulas: list[LatexFormula],
 ) -> Optional[list[str]]:
+    if not formulas:
+        return []
     Path(CACHE_PATH).mkdir(parents=True, exist_ok=True)
     svgs_files = [
         tempfile.NamedTemporaryFile("wb+", dir=CACHE_PATH, suffix=".svg")
@@ -136,6 +138,8 @@ def generate_latex_formulas_embeds_graphics(
 def generate_latex_formulas_embeds(
     formulas: list[LatexFormula],
 ) -> Optional[list[str]]:
+    if not formulas:
+        return []
     rendered = True
     html = None
     try:
@@ -170,6 +174,8 @@ def generate_latex_formulas_embeds(
 def generate_latex_formulas_embeds_fast(
     formulas: list[LatexFormula],
 ) -> Optional[list[str]]:
+    if not formulas:
+        return []
     latex_template = (
         r"\documentclass{{minimal}}"
         r"\usepackage[utf8]{{inputenc}}"
