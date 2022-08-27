@@ -1,4 +1,5 @@
 import argparse
+from dataclasses import dataclass
 from html import unescape
 import logging
 import os
@@ -14,6 +15,7 @@ import bs4
 from weasyprint import HTML, CSS
 
 CACHE_PATH = ".cache"
+TEMP_FILES = []
 
 class Formatter(logging.Formatter):
     def format(self, record):
@@ -57,6 +59,12 @@ def debug(message):
     logger.debug(message)
 
 
+@dataclass(frozen=True)
+class LatexFormula:
+    content: str
+    is_inline: bool
+
+
 def remove_spans(block: bs4.Tag):
     spans = list(block.find_all("span"))
     for span in spans:
@@ -81,15 +89,44 @@ def extract_problem(contest_id, problem) -> Tuple[str, str]:
     return f"{contest_id}{problem}.pdf", html
 
 
-def generate_latex_formulas_embeds(formulas: list[str]) -> Optional[list[str]]:
+def generate_latex_formulas_embeds_pretty(formulas: list[LatexFormula]) -> Optional[list[str]]:
+    Path(CACHE_PATH).mkdir(parents=True, exist_ok=True)
+    svgs_files = [tempfile.NamedTemporaryFile("wb+", dir=CACHE_PATH, suffix=".svg") for _ in formulas]
+    global TEMP_FILES
+    TEMP_FILES += svgs_files
+    embeds = []
+    rendered = True
+    try:
+        ps = []
+        for formula, svg_file in zip(formulas, svgs_files):
+            extra_args = ["--inline"] * formula.is_inline
+            ps.append(subprocess.Popen(
+                ["tex2svg", *extra_args, f"{unescape(formula.content)}"],
+                stdout=svg_file,
+            ))
+            embeds.append(f'<img src="{svg_file.name}" align="middle" />')
+        for p in ps:
+            if p.wait() != 0:
+                rendered = False
+                break
+    except Exception:
+        rendered = False
+    finally:
+        if not rendered:
+            warning("converting from latex to html with make4ht failed")
+            return None
+    return embeds
+
+
+def generate_latex_formulas_embeds(formulas: list[LatexFormula]) -> Optional[list[str]]:
     latex_template = (
-        r"\documentclass{{article}}"
+        r"\documentclass{{minimal}}"
         r"\usepackage[utf8]{{inputenc}}"
         r"\begin{{document}}"
         "{content}"
         r"\end{{document}}"
     )
-    latex_src = latex_template.format(content="\n\n".join(map(unescape, formulas)))
+    latex_src = latex_template.format(content="\n\n".join(map(lambda f: f"${unescape(f.content)}$", formulas)))
     Path(CACHE_PATH).mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", dir=CACHE_PATH, suffix=".tex") as f:
         f.write(latex_src)
@@ -97,7 +134,7 @@ def generate_latex_formulas_embeds(formulas: list[str]) -> Optional[list[str]]:
         rendered = True
         try:
             p = subprocess.Popen(
-                ["make4ht", "-u", f.name],
+                ["make4ht", "-u", f.name, "svg"],
                 cwd=os.path.split(f.name)[0],
             )
             if p.wait() != 0:
@@ -119,27 +156,29 @@ def generate_latex_formulas_embeds(formulas: list[str]) -> Optional[list[str]]:
     return html_formulas_embeds
 
 
-def render_formulas(html: str) -> Tuple[bool, str]:
-    display_formula_pattern = re.compile(r"\${5}(\$[^\$]+\$)\${5}")
-    inline_formula_pattern = re.compile(r"([^\$])\${2}(\$[^\$]+\$)\${2}")
+def render_formulas(html: str, fast: bool) -> Tuple[bool, str]:
+    inline_formula_pattern = re.compile(r"([^\$])\${3}([^\$]+)\${3}")
+    display_formula_pattern = re.compile(r"\${6}([^\$]+)\${6}")
 
-    display_formulas = re.findall(display_formula_pattern, html)
-    inline_formulas = [x[1] for x in re.findall(inline_formula_pattern, html)]
-    all_formulas = display_formulas + inline_formulas
+    inline_formulas = [LatexFormula(x[1], True) for x in re.findall(inline_formula_pattern, html)]
+    display_formulas = [LatexFormula(x, False) for x in re.findall(display_formula_pattern, html)]
+    all_formulas = inline_formulas + display_formulas
 
-    formulas_embeds = generate_latex_formulas_embeds(all_formulas)
+    generate_latex_formulas = generate_latex_formulas_embeds_pretty if not fast else generate_latex_formulas_embeds
+
+    formulas_embeds = generate_latex_formulas(all_formulas)
     if formulas_embeds is None:
         return False, html
 
     formula_embed_map = dict(zip(all_formulas, formulas_embeds))
     html = re.sub(
-        display_formula_pattern,
-        lambda x: f"<p>{formula_embed_map[x.group(1)]}</p>",
+        inline_formula_pattern,
+        lambda x: f"{x.group(1)}{formula_embed_map[LatexFormula(x.group(2), True)]}",
         html,
     )
     html = re.sub(
-        inline_formula_pattern,
-        lambda x: f"{x.group(1)}{formula_embed_map[x.group(2)]}",
+        display_formula_pattern,
+        lambda x: f'<div style="text-align:center;">{formula_embed_map[LatexFormula(x.group(1), False)]}</div>',
         html,
     )
     return True, html
@@ -149,12 +188,16 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("contest_id", type=int)
     parser.add_argument("problem", type=str)
+    parser.add_argument("-f", "--fast", action='store_true')
+    parser.add_argument("-d", "--output-dir", type=str, default='.')
     return parser.parse_args()
 
 
-def build_pdf_from_html(html: str, file_name: str):
-    HTML(string=html, base_url=CACHE_PATH).write_pdf(
-        file_name,
+def build_pdf_from_html(html: str, output_dir: str, file_name: str):
+    p = Path(output_dir)
+    p.mkdir(parents=True, exist_ok=True)
+    HTML(string=html, base_url="").write_pdf(
+        p / file_name,
         stylesheets=[
             CSS("styles/ttypography.css"),
             CSS("styles/problem-statement.css"),
@@ -169,18 +212,20 @@ def main():
 
     contest_id = args.contest_id
     problem = args.problem
+    fast = args.fast
+    output_dir = args.output_dir
 
     debug(f"fetching problem webpage: {contest_id=} {problem=}")
     out_filename, html = extract_problem(contest_id, problem)
     info("fetched")
 
     debug("rendering latex")
-    rendered, html = render_formulas(html)
+    rendered, html = render_formulas(html, fast)
     if rendered:
         info("rendered latex")
 
     debug("building pdf")
-    build_pdf_from_html(html, out_filename)
+    build_pdf_from_html(html, output_dir, out_filename)
     info("done")
 
 
