@@ -2,16 +2,18 @@ import argparse
 from html import unescape
 import logging
 import os
+from pathlib import Path
 import re
 import requests
 import subprocess
 import sys
 import tempfile
-from typing import Tuple
+from typing import Optional, Tuple
 
 import bs4
 from weasyprint import HTML, CSS
 
+CACHE_PATH = ".cache"
 
 class Formatter(logging.Formatter):
     def format(self, record):
@@ -79,8 +81,7 @@ def extract_problem(contest_id, problem) -> Tuple[str, str]:
     return f"{contest_id}{problem}.pdf", html
 
 
-def render_formulas(html: str) -> Tuple[bool, str]:
-    formula_pattern = re.compile(r"\$\$(\$[^\$]*\$)\$\$")
+def generate_latex_formulas_embeds(formulas: list[str]) -> Optional[list[str]]:
     latex_template = (
         r"\documentclass{{article}}"
         r"\usepackage[utf8]{{inputenc}}"
@@ -88,9 +89,9 @@ def render_formulas(html: str) -> Tuple[bool, str]:
         "{content}"
         r"\end{{document}}"
     )
-    formulas = re.findall(formula_pattern, html)
     latex_src = latex_template.format(content="\n\n".join(map(unescape, formulas)))
-    with tempfile.NamedTemporaryFile("w", suffix=".tex") as f:
+    Path(CACHE_PATH).mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile("w", dir=CACHE_PATH, suffix=".tex") as f:
         f.write(latex_src)
         f.flush()
         rendered = True
@@ -106,8 +107,7 @@ def render_formulas(html: str) -> Tuple[bool, str]:
         finally:
             if not rendered:
                 warning("converting from latex to html with make4ht failed")
-                return False, html
-
+                return None
     output_filename = f'{f.name.removesuffix(".tex")}.html'
     bs = bs4.BeautifulSoup(open(output_filename, "r"), "html.parser")
     html_formulas_embeds = [
@@ -115,9 +115,34 @@ def render_formulas(html: str) -> Tuple[bool, str]:
     ]
     if len(formulas) != len(html_formulas_embeds):
         warning("failed to render latex formulas")
+        return None
+    return html_formulas_embeds
+
+
+def render_formulas(html: str) -> Tuple[bool, str]:
+    display_formula_pattern = re.compile(r"\${5}(\$[^\$]+\$)\${5}")
+    inline_formula_pattern = re.compile(r"([^\$])\${2}(\$[^\$]+\$)\${2}")
+
+    display_formulas = re.findall(display_formula_pattern, html)
+    inline_formulas = [x[1] for x in re.findall(inline_formula_pattern, html)]
+    all_formulas = display_formulas + inline_formulas
+
+    formulas_embeds = generate_latex_formulas_embeds(all_formulas)
+    if formulas_embeds is None:
         return False, html
-    formula_embed_map = dict(zip(formulas, html_formulas_embeds))
-    return True, re.sub(formula_pattern, lambda x: formula_embed_map[x.group(1)], html)
+
+    formula_embed_map = dict(zip(all_formulas, formulas_embeds))
+    html = re.sub(
+        display_formula_pattern,
+        lambda x: f"<p>{formula_embed_map[x.group(1)]}</p>",
+        html,
+    )
+    html = re.sub(
+        inline_formula_pattern,
+        lambda x: f"{x.group(1)}{formula_embed_map[x.group(2)]}",
+        html,
+    )
+    return True, html
 
 
 def parse_args():
@@ -128,7 +153,7 @@ def parse_args():
 
 
 def build_pdf_from_html(html: str, file_name: str):
-    HTML(string=html, base_url="https://codeforces.com/").write_pdf(
+    HTML(string=html, base_url=CACHE_PATH).write_pdf(
         file_name,
         stylesheets=[
             CSS("styles/ttypography.css"),
@@ -156,7 +181,7 @@ def main():
 
     debug("building pdf")
     build_pdf_from_html(html, out_filename)
-    info(f"done")
+    info("done")
 
 
 if __name__ == "__main__":
