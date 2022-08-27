@@ -1,5 +1,6 @@
 import argparse
 from dataclasses import dataclass
+from enum import Enum
 from html import unescape
 import logging
 import os
@@ -15,6 +16,7 @@ import bs4
 from weasyprint import HTML, CSS
 
 CACHE_PATH = ".cache"
+TEMP_FILES = []
 
 
 class Formatter(logging.Formatter):
@@ -59,6 +61,12 @@ def debug(message):
     logger.debug(message)
 
 
+class Mode(Enum):
+    DEFAULT  = 1
+    FAST     = 2
+    GRAPHICS = 3
+
+
 @dataclass(frozen=True)
 class LatexFormula:
     content: str
@@ -89,7 +97,36 @@ def extract_problem(contest_id, problem) -> Tuple[str, str]:
     return f"{contest_id}{problem}.pdf", html
 
 
-def generate_latex_formulas_embeds_pretty(
+def generate_latex_formulas_embeds_graphics(formulas: list[LatexFormula]) -> Optional[list[str]]:
+    Path(CACHE_PATH).mkdir(parents=True, exist_ok=True)
+    svgs_files = [tempfile.NamedTemporaryFile("wb+", dir=CACHE_PATH, suffix=".svg") for _ in formulas]
+    global TEMP_FILES
+    TEMP_FILES += svgs_files
+    embeds = []
+    rendered = True
+    try:
+        ps = []
+        for formula, svg_file in zip(formulas, svgs_files):
+            extra_args = ["--inline"] * formula.is_inline
+            ps.append(subprocess.Popen(
+                ["tex2svg", *extra_args, f"{unescape(formula.content)}"],
+                stdout=svg_file,
+            ))
+            embeds.append(f'<img src="{svg_file.name}" align="middle" />')
+        for p in ps:
+            if p.wait() != 0:
+                rendered = False
+                break
+    except Exception:
+        rendered = False
+    finally:
+        if not rendered:
+            warning("converting from latex to html with make4ht failed")
+            return None
+    return embeds
+
+
+def generate_latex_formulas_embeds(
     formulas: list[LatexFormula],
 ) -> Optional[list[str]]:
     rendered = True
@@ -123,7 +160,7 @@ def generate_latex_formulas_embeds_pretty(
     return embeds
 
 
-def generate_latex_formulas_embeds(formulas: list[LatexFormula]) -> Optional[list[str]]:
+def generate_latex_formulas_embeds_fast(formulas: list[LatexFormula]) -> Optional[list[str]]:
     latex_template = (
         r"\documentclass{{minimal}}"
         r"\usepackage[utf8]{{inputenc}}"
@@ -163,7 +200,7 @@ def generate_latex_formulas_embeds(formulas: list[LatexFormula]) -> Optional[lis
     return html_formulas_embeds
 
 
-def render_formulas(html: str, fast: bool) -> Tuple[bool, str]:
+def render_formulas(html: str, mode: Mode) -> Tuple[bool, str]:
     inline_formula_pattern = re.compile(r"([^\$])\${3}([^\$]+)\${3}")
     display_formula_pattern = re.compile(r"\${6}([^\$]+)\${6}")
 
@@ -175,11 +212,11 @@ def render_formulas(html: str, fast: bool) -> Tuple[bool, str]:
     ]
     all_formulas = inline_formulas + display_formulas
 
-    generate_latex_formulas = (
-        generate_latex_formulas_embeds_pretty
-        if not fast
-        else generate_latex_formulas_embeds
-    )
+    generate_latex_formulas = generate_latex_formulas_embeds
+    if mode == Mode.FAST:
+        generate_latex_formulas = generate_latex_formulas_embeds_fast
+    elif mode == Mode.GRAPHICS:
+        generate_latex_formulas = generate_latex_formulas_embeds_graphics
 
     formulas_embeds = generate_latex_formulas(all_formulas)
     if formulas_embeds is None:
@@ -203,15 +240,18 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("contest_id", type=int)
     parser.add_argument("problem", type=str)
-    parser.add_argument("-f", "--fast", action="store_true")
+    group = parser.add_mutually_exclusive_group(required=False)
+    group.add_argument("-f", "--fast", action="store_true")
+    group.add_argument("-g", "--graphics", action="store_true")
+
     parser.add_argument("-d", "--output-dir", type=str, default=".")
     return parser.parse_args()
 
 
-def build_pdf_from_html(html: str, output_dir: str, file_name: str, fast: bool):
+def build_pdf_from_html(html: str, output_dir: str, file_name: str, fast: Mode):
     p = Path(output_dir)
     p.mkdir(parents=True, exist_ok=True)
-    extra_css = [CSS("styles/tex2html.css")] * (not fast)
+    extra_css = [CSS("styles/tex2html.css")] * (fast == Mode.DEFAULT)
     HTML(string=html, base_url="").write_pdf(
         p / file_name,
         stylesheets=[
@@ -229,7 +269,11 @@ def main():
 
     contest_id = args.contest_id
     problem = args.problem
-    fast = args.fast
+    mode = Mode.DEFAULT
+    if args.fast:
+        mode = Mode.FAST
+    elif args.graphics:
+        mode = Mode.GRAPHICS
     output_dir = args.output_dir
 
     debug(f"fetching problem webpage: {contest_id=} {problem=}")
@@ -237,12 +281,12 @@ def main():
     info("fetched")
 
     debug("rendering latex")
-    rendered, html = render_formulas(html, fast)
+    rendered, html = render_formulas(html, mode)
     if rendered:
         info("rendered latex")
 
     debug("building pdf")
-    build_pdf_from_html(html, output_dir, out_filename, fast)
+    build_pdf_from_html(html, output_dir, out_filename, mode)
     info("done")
 
 
