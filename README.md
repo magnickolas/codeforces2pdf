@@ -1,7 +1,7 @@
 # codeforces2pdf
 Extract [CodeForces](https://codeforces.com/) problems to PDF files
 
-A remake of https://github.com/AliOsm/codeforces2pdf, with Selenium replaced by requests + BeautifulSoup + either mathjax-node-cli or make4ht latex renderer.
+A remake of https://github.com/AliOsm/codeforces2pdf, with Selenium replaced by requests + BeautifulSoup + either mathjax or make4ht latex renderer.
 
 ## Prerequisites
 - [Python 3.9+](https://www.python.org/)
@@ -25,7 +25,7 @@ python3 codeforces2pdf.py [-d OUT_DIR] [-f] <contest_id> <problem>
 ```
 
 ### Notes
-With `-f | --fast` the utility executes faster, but produces simpler and less sane view of latex formulas.
+With `-f | --fast` the utility executes a little bit faster, but produces simpler and less sane views of latex formulas.
 
 ## License
 The project is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
