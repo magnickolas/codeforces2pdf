@@ -5,7 +5,7 @@ A remake of https://github.com/AliOsm/codeforces2pdf, with Selenium replaced by 
 
 ## Prerequisites
 - [Python 3.9+](https://www.python.org/)
-- [mathjax-node-cli](https://github.com/mathjax/mathjax-node-cli) (for pretty mode)
+- [mathjax-node-cli](https://github.com/mathjax/mathjax-node-cli) (for default and graphics mode)
 - [make4ht](https://ctan.org/pkg/make4ht/) (for fast mode)
 
 ## Quickstart
@@ -21,11 +21,13 @@ pip install -r requirements.txt
 
 Extract a problem from a contest:
 ```console
-python3 codeforces2pdf.py [-d OUT_DIR] [-f] <contest_id> <problem>
+python3 codeforces2pdf.py [-d OUT_DIR] [-f|-g] <contest_id> <problem>
 ```
 
 ### Notes
-With `-f | --fast` the utility executes a little bit faster, but produces simpler and less sane views of latex formulas.
+With `-f | --fast` the utility executes a tiny bit faster and requires only TexLive distribution, but produces simpler and much less sane views of latex formulas.
+With `-g | --graphics` the formulas are rendered to SVGs, one may prefer this rendering, but it consumes lots of CPU time.
+
 
 ## License
 The project is available as open source under the terms of the [MIT License](https://opensource.org/licenses/MIT).
