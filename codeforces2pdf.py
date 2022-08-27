@@ -15,7 +15,7 @@ import bs4
 from weasyprint import HTML, CSS
 
 CACHE_PATH = ".cache"
-TEMP_FILES = []
+
 
 class Formatter(logging.Formatter):
     def format(self, record):
@@ -89,32 +89,37 @@ def extract_problem(contest_id, problem) -> Tuple[str, str]:
     return f"{contest_id}{problem}.pdf", html
 
 
-def generate_latex_formulas_embeds_pretty(formulas: list[LatexFormula]) -> Optional[list[str]]:
-    Path(CACHE_PATH).mkdir(parents=True, exist_ok=True)
-    svgs_files = [tempfile.NamedTemporaryFile("wb+", dir=CACHE_PATH, suffix=".svg") for _ in formulas]
-    global TEMP_FILES
-    TEMP_FILES += svgs_files
-    embeds = []
+def generate_latex_formulas_embeds_pretty(
+    formulas: list[LatexFormula],
+) -> Optional[list[str]]:
     rendered = True
+    html = None
     try:
-        ps = []
-        for formula, svg_file in zip(formulas, svgs_files):
-            extra_args = ["--inline"] * formula.is_inline
-            ps.append(subprocess.Popen(
-                ["tex2svg", *extra_args, f"{unescape(formula.content)}"],
-                stdout=svg_file,
-            ))
-            embeds.append(f'<img src="{svg_file.name}" align="middle" />')
-        for p in ps:
-            if p.wait() != 0:
-                rendered = False
-                break
+        arg = r" \\ ".join(unescape(f.content) for f in formulas) + r" \\"
+        p = subprocess.Popen(
+            ["tex2htmlcss", "--inline", arg],
+            stdout=subprocess.PIPE,
+        )
+        html, _ = p.communicate()
+        if p.returncode != 0:
+            rendered = False
     except Exception:
         rendered = False
     finally:
         if not rendered:
             warning("converting from latex to html with make4ht failed")
             return None
+    if html is None:
+        return None
+    bs = bs4.BeautifulSoup(html, "html.parser")
+    embeds = bs.find_all("span", class_="mjx-block")[:-1]
+    embeds = [e.find("span", class_="mjx-box") for e in embeds]
+    embeds = [e for e in embeds if e]
+    for e in embeds:
+        e["class"] = "mjx-chtml mjx-math"
+    if len(formulas) != len(embeds):
+        warning("failed to render latex formulas")
+        return None
     return embeds
 
 
@@ -126,7 +131,9 @@ def generate_latex_formulas_embeds(formulas: list[LatexFormula]) -> Optional[lis
         "{content}"
         r"\end{{document}}"
     )
-    latex_src = latex_template.format(content="\n\n".join(map(lambda f: f"${unescape(f.content)}$", formulas)))
+    latex_src = latex_template.format(
+        content="\n\n".join(map(lambda f: f"${unescape(f.content)}$", formulas))
+    )
     Path(CACHE_PATH).mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile("w", dir=CACHE_PATH, suffix=".tex") as f:
         f.write(latex_src)
@@ -160,11 +167,19 @@ def render_formulas(html: str, fast: bool) -> Tuple[bool, str]:
     inline_formula_pattern = re.compile(r"([^\$])\${3}([^\$]+)\${3}")
     display_formula_pattern = re.compile(r"\${6}([^\$]+)\${6}")
 
-    inline_formulas = [LatexFormula(x[1], True) for x in re.findall(inline_formula_pattern, html)]
-    display_formulas = [LatexFormula(x, False) for x in re.findall(display_formula_pattern, html)]
+    inline_formulas = [
+        LatexFormula(x[1], True) for x in re.findall(inline_formula_pattern, html)
+    ]
+    display_formulas = [
+        LatexFormula(x, False) for x in re.findall(display_formula_pattern, html)
+    ]
     all_formulas = inline_formulas + display_formulas
 
-    generate_latex_formulas = generate_latex_formulas_embeds_pretty if not fast else generate_latex_formulas_embeds
+    generate_latex_formulas = (
+        generate_latex_formulas_embeds_pretty
+        if not fast
+        else generate_latex_formulas_embeds
+    )
 
     formulas_embeds = generate_latex_formulas(all_formulas)
     if formulas_embeds is None:
@@ -188,14 +203,15 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("contest_id", type=int)
     parser.add_argument("problem", type=str)
-    parser.add_argument("-f", "--fast", action='store_true')
-    parser.add_argument("-d", "--output-dir", type=str, default='.')
+    parser.add_argument("-f", "--fast", action="store_true")
+    parser.add_argument("-d", "--output-dir", type=str, default=".")
     return parser.parse_args()
 
 
-def build_pdf_from_html(html: str, output_dir: str, file_name: str):
+def build_pdf_from_html(html: str, output_dir: str, file_name: str, fast: bool):
     p = Path(output_dir)
     p.mkdir(parents=True, exist_ok=True)
+    extra_css = [CSS("styles/tex2html.css")] * (not fast)
     HTML(string=html, base_url="").write_pdf(
         p / file_name,
         stylesheets=[
@@ -203,6 +219,7 @@ def build_pdf_from_html(html: str, output_dir: str, file_name: str):
             CSS("styles/problem-statement.css"),
             CSS("styles/clear.css"),
             CSS("styles/style.css"),
+            *extra_css,
         ],
     )
 
@@ -225,7 +242,7 @@ def main():
         info("rendered latex")
 
     debug("building pdf")
-    build_pdf_from_html(html, output_dir, out_filename)
+    build_pdf_from_html(html, output_dir, out_filename, fast)
     info("done")
 
 
