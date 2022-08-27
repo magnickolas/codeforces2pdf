@@ -128,7 +128,7 @@ def generate_latex_formulas_embeds_graphics(
         rendered = False
     finally:
         if not rendered:
-            warning("converting from latex to html with make4ht failed")
+            warning("converting from latex to html with tex2svg failed")
             return None
     return embeds
 
@@ -151,7 +151,7 @@ def generate_latex_formulas_embeds(
         rendered = False
     finally:
         if not rendered:
-            warning("converting from latex to html with make4ht failed")
+            warning("converting from latex to html with tex2htmlcss failed")
             return None
     if html is None:
         return None
