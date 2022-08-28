@@ -76,7 +76,7 @@ class LatexFormula:
 def remove_spans(block: bs4.Tag):
     spans = list(block.find_all("span"))
     for span in spans:
-        span.replace_with(span.encode_contents().decode())
+        span.attrs = {}
 
 
 def extract_problem(contest_id, problem) -> Tuple[str, str]:
