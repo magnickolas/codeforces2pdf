@@ -7,6 +7,7 @@ A remake of https://github.com/AliOsm/codeforces2pdf, with Selenium replaced by 
 - [Python 3.9+](https://www.python.org/)
 - [mathjax-node-cli](https://github.com/mathjax/mathjax-node-cli) (for default and graphics mode)
 - [make4ht](https://ctan.org/pkg/make4ht/) (for fast mode)
+- Tested on Ubuntu 22.04.1 LTS
 
 ## Quickstart
 
