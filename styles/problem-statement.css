@@ -381,7 +381,7 @@ div .problem-statement-overlay {
 
 .tex-font-style-tt {
     font-size: 110%;
-    font-family: courier new,monospace;
+    font-family: monospace;
 }
 
 .tex-font-style-md {

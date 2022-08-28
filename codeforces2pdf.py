@@ -73,10 +73,9 @@ class LatexFormula:
     is_inline: bool
 
 
-def remove_spans(block: bs4.Tag):
-    spans = list(block.find_all("span"))
-    for span in spans:
-        span.attrs = {}
+def remove_alert(block: bs4.Tag):
+    for div in block.find_all("div", class_=['alert', 'alert-info', 'diff-notifier']):
+        div.extract()
 
 
 def extract_problem(contest_id, problem) -> Tuple[str, str]:
@@ -91,8 +90,8 @@ def extract_problem(contest_id, problem) -> Tuple[str, str]:
     problem_block = bs.select_one(".problemindexholder")
     if problem_block is None:
         error("couldn't find the problem block on a webpage")
-    remove_spans(problem_block)
-    html = problem_block.encode_contents().decode()
+    remove_alert(problem_block)
+    html = problem_block.decode_contents()
 
     return f"{contest_id}{problem}.pdf", html
 
@@ -207,7 +206,7 @@ def generate_latex_formulas_embeds_fast(
     output_filename = f'{f.name.removesuffix(".tex")}.html'
     bs = bs4.BeautifulSoup(open(output_filename, "r"), "html.parser")
     html_formulas_embeds = [
-        par.encode_contents().decode().strip() for par in bs.find_all("p")
+        par.decode_contents().strip() for par in bs.find_all("p")
     ]
     if len(formulas) != len(html_formulas_embeds):
         warning("failed to render latex formulas")
@@ -274,6 +273,8 @@ def build_pdf_from_html(html: str, output_dir: str, file_name: str, mode: Mode):
             CSS("styles/problem-statement.css"),
             CSS("styles/clear.css"),
             CSS("styles/style.css"),
+            CSS("styles/font_cuprum.css"),
+            CSS("styles/font_pt_sans_narrow.css"),
             *extra_css,
         ],
     )
